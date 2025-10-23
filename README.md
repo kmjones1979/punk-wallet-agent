@@ -1,12 +1,12 @@
-# 🏗 scaffold-eth - 🧑‍🎤 [PunkWallet.io](https://PunkWallet.io)
+# 🏗 scaffold-eth - ⚡ ZapAI Wallet
 
-> An open source Ethereum web wallet.
+> An AI-powered open source Ethereum web wallet.
 
 🎥 [watch this 10m demo](https://youtu.be/lYRd1k1RBAQ)
 
 ---
 
-> PunkWallet.io is a forkable burner wallet with Wallet Connect up front. 
+> ZapAI Wallet is a modern burner wallet with AI capabilities and Wallet Connect integration. 
 
 ![image](https://user-images.githubusercontent.com/2653167/153722202-5368187d-4189-499e-94a3-1ee41596f445.png)
 
@@ -25,9 +25,9 @@ required: [Node](https://nodejs.org/dist/latest-v12.x/) plus [Yarn](https://clas
 
 
 ```bash
-git clone https://github.com/scaffold-eth/punk-wallet
+git clone https://github.com/scaffold-eth/zapai-wallet
 
-cd punk-wallet
+cd zapai-wallet
 ```
 
 ```bash
@@ -45,7 +45,7 @@ yarn start
 > in a second terminal window:
 
 ```bash
-cd punk-wallet
+cd zapai-wallet
 yarn chain
 
 ```

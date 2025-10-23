@@ -1,63 +1,62 @@
 {
-  "name": "@scaffold-eth/monorepo",
-  "version": "1.0.0",
-  "keywords": [
-    "ethereum",
-    "react",
-    "uniswap",
-    "workspaces",
-    "yarn"
-  ],
-  "private": true,
-  "scripts": {
-    "react-app:build": "yarn workspace @scaffold-eth/react-app build --max-old-space-size=12288",
-    "react-app:eject": "yarn workspace @scaffold-eth/react-app eject",
-    "react-app:start": "yarn workspace @scaffold-eth/react-app start",
-    "react-app:test": "yarn workspace @scaffold-eth/react-app test",
-    "build": "yarn workspace @scaffold-eth/react-app build --max-old-space-size=12288",
-    "chain": "yarn workspace @scaffold-eth/hardhat chain",
-    "fork": "yarn workspace @scaffold-eth/hardhat fork",
-    "node": "yarn workspace @scaffold-eth/hardhat chain",
-    "test": "yarn workspace @scaffold-eth/hardhat test",
-    "start": "yarn workspace @scaffold-eth/react-app start",
-    "compile": "yarn workspace @scaffold-eth/hardhat compile",
-    "deploy": "yarn workspace @scaffold-eth/hardhat deploy",
-    "watch": "yarn workspace @scaffold-eth/hardhat watch",
-    "accounts": "yarn workspace @scaffold-eth/hardhat accounts",
-    "balance": "yarn workspace @scaffold-eth/hardhat balance",
-    "send": "yarn workspace @scaffold-eth/hardhat send",
-    "ipfs": "yarn workspace @scaffold-eth/react-app ipfs",
-    "surge": "yarn workspace @scaffold-eth/react-app surge",
-    "s3": "yarn workspace @scaffold-eth/react-app s3",
-    "ship": "yarn workspace @scaffold-eth/react-app ship",
-    "generate": "yarn workspace @scaffold-eth/hardhat generate",
-    "account": "yarn workspace @scaffold-eth/hardhat account",
-    "mineContractAddress": "cd packages/hardhat && npx hardhat mineContractAddress",
-    "wallet": "cd packages/hardhat && npx hardhat wallet",
-    "fundedwallet": "cd packages/hardhat && npx hardhat fundedwallet",
-    "flatten": "cd packages/hardhat && npx hardhat flatten",
-    "graph-run-node": "cd docker/graph-node && docker-compose up",
-    "graph-remove-node": "cd docker/graph-node && docker-compose down",
-    "graph-prepare": "mustache packages/subgraph/config/config.json packages/subgraph/src/subgraph.template.yaml > packages/subgraph/subgraph.yaml",
-    "graph-codegen": "yarn workspace @scaffold-eth/subgraph graph codegen",
-    "graph-build": "yarn workspace @scaffold-eth/subgraph graph build",
-    "graph-create-local": "yarn workspace @scaffold-eth/subgraph graph create --node http://localhost:8020/ scaffold-eth/your-contract",
-    "graph-remove-local": "yarn workspace @scaffold-eth/subgraph graph remove --node http://localhost:8020/ scaffold-eth/your-contract",
-    "graph-deploy-local": "yarn workspace @scaffold-eth/subgraph graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 scaffold-eth/your-contract",
-    "graph-ship-local": "yarn graph-prepare && yarn graph-codegen && yarn graph-deploy-local",
-    "deploy-and-graph": "yarn deploy && yarn graph-ship-local",
-    "theme": "yarn workspace @scaffold-eth/react-app theme",
-    "watch-theme": "yarn workspace @scaffold-eth/react-app watch"
-  },
-  "workspaces": {
-    "packages": [
-      "packages/*"
+    "name": "@zapai/wallet-monorepo",
+    "version": "1.0.0",
+    "keywords": [
+        "ethereum",
+        "react",
+        "wallet",
+        "ai",
+        "web3",
+        "workspaces",
+        "yarn"
     ],
-    "nohoist": [
-      "**/@graphprotocol/graph-ts",
-      "**/@graphprotocol/graph-ts/**",
-      "**/hardhat",
-      "**/hardhat/**"
-    ]
-  }
+    "private": true,
+    "scripts": {
+        "dev": "yarn workspace @zapai/wallet-nextjs dev",
+        "build": "yarn workspace @zapai/wallet-nextjs build",
+        "start": "yarn workspace @zapai/wallet-nextjs start",
+        "lint": "yarn workspace @zapai/wallet-nextjs lint",
+        "chain": "yarn workspace @scaffold-eth/hardhat chain",
+        "fork": "yarn workspace @scaffold-eth/hardhat fork",
+        "node": "yarn workspace @scaffold-eth/hardhat chain",
+        "test": "yarn workspace @scaffold-eth/hardhat test",
+        "compile": "yarn workspace @scaffold-eth/hardhat compile",
+        "deploy": "yarn workspace @scaffold-eth/hardhat deploy",
+        "watch": "yarn workspace @scaffold-eth/hardhat watch",
+        "accounts": "yarn workspace @scaffold-eth/hardhat accounts",
+        "balance": "yarn workspace @scaffold-eth/hardhat balance",
+        "send": "yarn workspace @scaffold-eth/hardhat send",
+        "generate": "yarn workspace @scaffold-eth/hardhat generate",
+        "account": "yarn workspace @scaffold-eth/hardhat account",
+        "mineContractAddress": "cd packages/hardhat && npx hardhat mineContractAddress",
+        "wallet": "cd packages/hardhat && npx hardhat wallet",
+        "fundedwallet": "cd packages/hardhat && npx hardhat fundedwallet",
+        "flatten": "cd packages/hardhat && npx hardhat flatten",
+        "graph-run-node": "cd docker/graph-node && docker-compose up",
+        "graph-remove-node": "cd docker/graph-node && docker-compose down",
+        "graph-prepare": "mustache packages/subgraph/config/config.json packages/subgraph/src/subgraph.template.yaml > packages/subgraph/subgraph.yaml",
+        "graph-codegen": "yarn workspace @scaffold-eth/subgraph graph codegen",
+        "graph-build": "yarn workspace @scaffold-eth/subgraph graph build",
+        "graph-create-local": "yarn workspace @scaffold-eth/subgraph graph create --node http://localhost:8020/ scaffold-eth/your-contract",
+        "graph-remove-local": "yarn workspace @scaffold-eth/subgraph graph remove --node http://localhost:8020/ scaffold-eth/your-contract",
+        "graph-deploy-local": "yarn workspace @scaffold-eth/subgraph graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 scaffold-eth/your-contract",
+        "graph-ship-local": "yarn graph-prepare && yarn graph-codegen && yarn graph-deploy-local",
+        "deploy-and-graph": "yarn deploy && yarn graph-ship-local"
+    },
+    "workspaces": {
+        "packages": [
+            "packages/*"
+        ],
+        "nohoist": [
+            "**/@graphprotocol/graph-ts",
+            "**/@graphprotocol/graph-ts/**",
+            "**/hardhat",
+            "**/hardhat/**"
+        ]
+    },
+    "packageManager": "yarn@3.2.3+sha512.f26f951f67de0c6a33ee381e5ff364709c87e70eb5e65c694e4facde3512f1fa80b8679e6ba31ce7d340fbb46f08dd683af9457e240f25a204be7427940d767e",
+    "resolutions": {
+        "concat-stream": "^1.6.2",
+        "@apollo/client": "3.2.4"
+    }
 }
