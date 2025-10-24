@@ -13,6 +13,7 @@ import { parseEther, parseUnits, encodeFunctionData } from "viem";
 import QRCode from "qrcode.react";
 import ZapBlockie from "../components/ZapBlockie";
 import QrScanner from "../components/QrScanner";
+import PaymentModal from "../components/PaymentModal";
 
 const AgentIcon = () => (
     <svg
@@ -57,6 +58,11 @@ export default function AgentPage() {
     const [showQrScanner, setShowQrScanner] = useState(false);
     const [paymentRequest, setPaymentRequest] = useState<any>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [showX402PaymentModal, setShowX402PaymentModal] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [autoPayThreshold, setAutoPayThreshold] = useState(0.05); // Default $0.05
+    const [autoPayInProgress, setAutoPayInProgress] = useState(false);
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
     const [copiedAddress, setCopiedAddress] = useState(false);
     const {
         sendTransaction,
@@ -76,16 +82,199 @@ export default function AgentPage() {
         handleSubmit,
         isLoading,
         error,
+        reload,
     } = useChat({
         api: "/api/agent",
         body: {
             walletAddress: address,
         },
+        onError: (error) => {
+            // Check if it's a 402 Payment Required error
+            try {
+                const errorData = JSON.parse(error.message);
+                if (errorData.code === "PAYMENT_REQUIRED") {
+                    const paymentAmount = parseFloat(errorData.priceUSDC);
+
+                    // Check if amount is below auto-pay threshold
+                    if (
+                        paymentAmount <= autoPayThreshold &&
+                        autoPayThreshold > 0 &&
+                        address &&
+                        !autoPayInProgress
+                    ) {
+                        // Silent auto-pay - keep loading state active
+                        setIsProcessingPayment(true);
+                        const chainId =
+                            process.env.NODE_ENV === "development"
+                                ? 84532
+                                : 8453;
+                        handleAutoPay(
+                            errorData.serviceId,
+                            errorData.priceUSDC,
+                            chainId
+                        );
+                    } else {
+                        // Amount over threshold - show payment modal
+                        setShowX402PaymentModal(true);
+                    }
+                } else {
+                    // Not a payment error - log it
+                    console.error("❌ Error:", error);
+                }
+            } catch (e) {
+                // Not a JSON error - log it
+                console.error("❌ Error:", error);
+            }
+        },
     });
 
     useEffect(() => {
         setMounted(true);
+        // Load auto-pay threshold from localStorage
+        const savedThreshold = localStorage.getItem("autoPayThreshold");
+        if (savedThreshold) {
+            setAutoPayThreshold(parseFloat(savedThreshold));
+        }
     }, []);
+
+    // Save threshold to localStorage when it changes
+    useEffect(() => {
+        if (mounted) {
+            localStorage.setItem(
+                "autoPayThreshold",
+                autoPayThreshold.toString()
+            );
+        }
+    }, [autoPayThreshold, mounted]);
+
+    // Handle auto-payment (silent, no UI)
+    const handleAutoPay = async (
+        serviceId: string,
+        priceUSDC: string,
+        chainId: number = 84532
+    ) => {
+        if (!address) return;
+
+        setAutoPayInProgress(true);
+
+        try {
+            // Load payment request
+            const response = await fetch("/api/payment/request", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    serviceId,
+                    chainId,
+                    userAddress: address,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to load payment request");
+            }
+
+            const paymentReq = data.payment;
+
+            // Switch chain if needed
+            if (chain?.id !== chainId) {
+                await switchChain({ chainId });
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+
+            // Encode transfer function
+            const ERC20_ABI = [
+                {
+                    name: "transfer",
+                    type: "function",
+                    stateMutability: "nonpayable",
+                    inputs: [
+                        { name: "to", type: "address" },
+                        { name: "amount", type: "uint256" },
+                    ],
+                    outputs: [{ name: "", type: "bool" }],
+                },
+            ] as const;
+
+            const transferData = encodeFunctionData({
+                abi: ERC20_ABI,
+                functionName: "transfer",
+                args: [
+                    paymentReq.paymentReceiverAddress,
+                    BigInt(paymentReq.amountInBaseUnits),
+                ],
+            });
+
+            // Send transaction
+            const hash = await new Promise<string>((resolve, reject) => {
+                sendTransaction(
+                    {
+                        to: paymentReq.usdcAddress as `0x${string}`,
+                        data: transferData,
+                        chainId: chainId,
+                    },
+                    {
+                        onSuccess: (hash) => resolve(hash),
+                        onError: (error) => reject(error),
+                    }
+                );
+            });
+
+            // Wait for confirmation (polling approach)
+            let attempts = 0;
+            const maxAttempts = 30;
+            while (attempts < maxAttempts) {
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+
+                // Verify payment
+                const verifyResponse = await fetch("/api/payment/verify", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        serviceId,
+                        txHash: hash,
+                        userAddress: address,
+                        chainId,
+                    }),
+                });
+
+                const verifyData = await verifyResponse.json();
+
+                if (verifyResponse.ok && verifyData.verified) {
+                    // Payment verified! Retry the original message
+                    setAutoPayInProgress(false);
+
+                    console.log(
+                        "✅ Payment verified, waiting for cache update..."
+                    );
+
+                    // Longer delay to ensure payment cache is updated server-side
+                    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+                    // Retry the last message (without duplicating)
+                    console.log("📤 Retrying last message...");
+                    reload();
+
+                    // Clear processing state after reload starts
+                    setTimeout(() => {
+                        setIsProcessingPayment(false);
+                    }, 500);
+                    return;
+                }
+
+                attempts++;
+            }
+
+            throw new Error("Payment verification timeout");
+        } catch (error: any) {
+            console.error("Auto-pay error:", error);
+            setAutoPayInProgress(false);
+            setIsProcessingPayment(false);
+            // Fall back to showing the modal
+            setShowX402PaymentModal(true);
+        }
+    };
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -356,25 +545,52 @@ export default function AgentPage() {
                     </div>
                     <div className="flex items-center gap-2">
                         {mounted && isConnected && (
-                            <button
-                                onClick={() => setShowQrScanner(true)}
-                                className="p-2 sm:p-2.5 bg-white border-2 border-gray-200 rounded-lg hover:border-purple-500 transition-all"
-                                title="Scan Payment QR"
-                            >
-                                <svg
-                                    className="w-6 h-6"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                            <>
+                                <button
+                                    onClick={() => setShowQrScanner(true)}
+                                    className="p-2 sm:p-2.5 bg-white border-2 border-gray-200 rounded-lg hover:border-purple-500 transition-all"
+                                    title="Scan Payment QR"
                                 >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-                                    />
-                                </svg>
-                            </button>
+                                    <svg
+                                        className="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                                        />
+                                    </svg>
+                                </button>
+                                <button
+                                    onClick={() => setShowSettings(true)}
+                                    className="p-2 sm:p-2.5 bg-white border-2 border-gray-200 rounded-lg hover:border-purple-500 transition-all"
+                                    title="Settings"
+                                >
+                                    <svg
+                                        className="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                                        />
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                        />
+                                    </svg>
+                                </button>
+                            </>
                         )}
                         <a
                             href="/wallet"
@@ -475,10 +691,10 @@ export default function AgentPage() {
                             <AgentIcon />
                         </div>
                         <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                            Welcome to Zap Agent
+                            Welcome to Zap
                         </h2>
                         <p className="text-gray-600 mb-4">
-                            Your AI-powered crypto assistant
+                            Your AI and x402 powered crypto assistant
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto text-left">
                             <div className="p-4 bg-white rounded-lg shadow-sm border border-gray-200">
@@ -573,7 +789,7 @@ export default function AgentPage() {
                             </div>
                         </div>
                     ))}
-                    {isLoading && (
+                    {(isLoading || isProcessingPayment) && (
                         <div className="flex justify-start mb-4">
                             <div className="bg-white shadow-sm border border-gray-200 rounded-2xl px-4 py-3">
                                 <div className="flex items-center gap-2">
@@ -601,12 +817,21 @@ export default function AgentPage() {
                                         ? "Ask me anything about crypto..."
                                         : "Connect your wallet to start..."
                                 }
-                                disabled={!isConnected || isLoading}
+                                disabled={
+                                    !isConnected ||
+                                    isLoading ||
+                                    isProcessingPayment
+                                }
                                 className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:border-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             />
                             <button
                                 type="submit"
-                                disabled={!isConnected || isLoading || !input}
+                                disabled={
+                                    !isConnected ||
+                                    isLoading ||
+                                    isProcessingPayment ||
+                                    !input
+                                }
                                 className="px-6 py-3 bg-linear-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Send
@@ -618,11 +843,23 @@ export default function AgentPage() {
                                 agent
                             </p>
                         )}
-                        {error && (
-                            <p className="text-xs text-red-600 mt-2 text-center">
-                                ❌ Error: {error.message}
-                            </p>
-                        )}
+                        {error &&
+                            (() => {
+                                // Don't show 402 Payment Required errors (handled silently)
+                                try {
+                                    const errorData = JSON.parse(error.message);
+                                    if (errorData.code === "PAYMENT_REQUIRED") {
+                                        return null;
+                                    }
+                                } catch (e) {
+                                    // Not JSON, show the error
+                                }
+                                return (
+                                    <p className="text-xs text-red-600 mt-2 text-center">
+                                        ❌ Error: {error.message}
+                                    </p>
+                                );
+                            })()}
                     </div>
                 </div>
             </div>
@@ -1062,6 +1299,138 @@ export default function AgentPage() {
                                     : isSending
                                     ? "Paying..."
                                     : "Approve & Pay"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* x402 Payment Modal */}
+            {mounted && (
+                <PaymentModal
+                    isOpen={showX402PaymentModal}
+                    onClose={() => setShowX402PaymentModal(false)}
+                    onPaymentComplete={async () => {
+                        setShowX402PaymentModal(false);
+                        // Payment is now cached - retry the last message
+                        setTimeout(() => {
+                            reload();
+                        }, 1000);
+                    }}
+                    serviceId="ai-agent"
+                    serviceName="Zap AI Agent"
+                    priceUSDC="0.01"
+                />
+            )}
+
+            {/* Settings Modal */}
+            {showSettings && mounted && (
+                <div className="fixed inset-0 z-200 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
+                        {/* Header */}
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-2xl font-bold text-gray-900">
+                                ⚙️ Settings
+                            </h2>
+                            <button
+                                onClick={() => setShowSettings(false)}
+                                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="space-y-6">
+                            <div className="space-y-3">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Auto-Pay Threshold
+                                </label>
+                                <p className="text-xs text-gray-500">
+                                    Automatically approve payments under this
+                                    amount without showing a confirmation modal.
+                                </p>
+
+                                <div className="flex items-center gap-3">
+                                    <span className="text-sm text-gray-600">
+                                        $
+                                    </span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={autoPayThreshold}
+                                        onChange={(e) =>
+                                            setAutoPayThreshold(
+                                                parseFloat(e.target.value) || 0
+                                            )
+                                        }
+                                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                    />
+                                    <span className="text-sm text-gray-600">
+                                        USDC
+                                    </span>
+                                </div>
+
+                                <div className="flex gap-2 flex-wrap">
+                                    <button
+                                        onClick={() => setAutoPayThreshold(0)}
+                                        className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg"
+                                    >
+                                        $0 (Always ask)
+                                    </button>
+                                    <button
+                                        onClick={() =>
+                                            setAutoPayThreshold(0.01)
+                                        }
+                                        className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg"
+                                    >
+                                        $0.01
+                                    </button>
+                                    <button
+                                        onClick={() =>
+                                            setAutoPayThreshold(0.05)
+                                        }
+                                        className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg"
+                                    >
+                                        $0.05
+                                    </button>
+                                    <button
+                                        onClick={() => setAutoPayThreshold(0.1)}
+                                        className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg"
+                                    >
+                                        $0.10
+                                    </button>
+                                    <button
+                                        onClick={() => setAutoPayThreshold(1.0)}
+                                        className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg"
+                                    >
+                                        $1.00
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <p className="text-xs text-blue-800">
+                                    💡 <strong>Tip:</strong> Setting a threshold
+                                    above $0 allows for seamless micro-payments
+                                    without interrupting your workflow.
+                                </p>
+                            </div>
+
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                <p className="text-xs text-yellow-800">
+                                    ⚠️ <strong>Security Note:</strong> Only set
+                                    a threshold you're comfortable with. Each
+                                    payment will still require wallet approval.
+                                </p>
+                            </div>
+
+                            <button
+                                onClick={() => setShowSettings(false)}
+                                className="w-full px-6 py-3 bg-linear-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
+                            >
+                                Save Settings
                             </button>
                         </div>
                     </div>

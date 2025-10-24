@@ -13,6 +13,11 @@ import {
     avalanche,
 } from "viem/chains";
 import { unichain } from "../../../config/wagmi";
+import {
+    getCachedPaymentStatus,
+    checkX402PaymentStatus,
+    clearCachedPaymentStatus,
+} from "../../../config/x402";
 
 // Token addresses by chain
 const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
@@ -114,6 +119,50 @@ export const maxDuration = 30;
 export async function POST(req: Request) {
     try {
         const { messages, walletAddress } = await req.json();
+
+        // x402 Payment Check: Require payment for each AI message (pay-per-message)
+        if (walletAddress) {
+            const serviceId = "ai-agent";
+
+            // Check if user has already paid (cached or verified)
+            let hasPayment = getCachedPaymentStatus(walletAddress, serviceId);
+
+            // If not in cache, check with x402 facilitator
+            if (!hasPayment) {
+                const status = await checkX402PaymentStatus(
+                    serviceId,
+                    walletAddress
+                );
+                hasPayment = status.valid;
+            }
+
+            if (!hasPayment) {
+                return new Response(
+                    JSON.stringify({
+                        error: "Payment Required",
+                        code: "PAYMENT_REQUIRED",
+                        message:
+                            "This AI agent requires payment via x402. Please complete payment to continue.",
+                        serviceId: serviceId,
+                        priceUSDC: "0.01",
+                        facilitatorUrl: "https://x402.org/facilitator",
+                    }),
+                    {
+                        status: 402, // HTTP 402 Payment Required
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Payment-Service": serviceId,
+                            "X-Payment-Amount": "0.01",
+                            "X-Payment-Currency": "USDC",
+                        },
+                    }
+                );
+            }
+
+            // Clear the payment cache immediately after use (pay-per-message)
+            // This ensures the next message will require a new payment
+            clearCachedPaymentStatus(walletAddress, serviceId);
+        }
 
         const result = streamText({
             model: getAIModel(),
