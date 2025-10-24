@@ -1,4 +1,4 @@
-# 🏗 scaffold-eth - ⚡ ZapAI Wallet
+# 🏗 scaffold-eth - ⚡ Zap Wallet
 
 > An AI-powered open source Ethereum web wallet with conversational crypto capabilities.
 
@@ -6,7 +6,7 @@
 
 ---
 
-> ZapAI Wallet is an AI-first crypto wallet powered by Coinbase AgentKit. Chat with your wallet to send crypto, check balances, and interact with blockchain networks naturally. Features a burner wallet mode and Wallet Connect integration.
+> Zap Wallet is an AI-first crypto wallet powered by Coinbase AgentKit. Chat with your wallet to send crypto, check balances, and interact with blockchain networks naturally. Features a burner wallet mode and Wallet Connect integration.
 
 ![image](https://user-images.githubusercontent.com/2653167/153722202-5368187d-4189-499e-94a3-1ee41596f445.png)
 

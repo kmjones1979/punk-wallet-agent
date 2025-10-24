@@ -1,8 +1,8 @@
-# 🤖 ZapAI Agent - AI-Powered Crypto Assistant
+# 🤖 Zap Agent - AI-Powered Crypto Assistant
 
 ## 🎉 What's New
 
-Your ZapAI wallet now includes an **AI Agent** powered by:
+Your Zap wallet now includes an **AI Agent** powered by:
 
 -   🧠 **Vercel AI SDK** - Natural language processing
 -   🔗 **Coinbase AgentKit** - Blockchain interactions
@@ -160,7 +160,7 @@ Edit the `system` message in `route.ts` to change the agent's personality and be
 -   📱 Mobile-responsive design
 -   🎯 Tool execution indicators
 -   ⚡ Smooth animations
--   🎨 Beautiful gradient design matching ZapAI theme
+-   🎨 Beautiful gradient design matching Zap theme
 
 ## 🐛 Troubleshooting
 
@@ -252,6 +252,6 @@ AI: [Uses getTokenInfo tool]
 
 ---
 
-**Built with ❤️ by ZapAI Team**
+**Built with ❤️ by Zap Team**
 
 Questions? Open an issue or reach out!

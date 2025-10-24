@@ -1,6 +1,6 @@
-# 🌟 Using Google Gemini with ZapAI Agent
+# 🌟 Using Google Gemini with Zap Agent
 
-ZapAI Agent supports multiple AI providers, including Google's Gemini models!
+Zap Agent supports multiple AI providers, including Google's Gemini models!
 
 ## Why Choose Gemini?
 

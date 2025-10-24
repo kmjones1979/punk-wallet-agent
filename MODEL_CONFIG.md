@@ -87,7 +87,7 @@ However, they:
 -   ❌ Are slower (reasoning tokens add latency)
 -   ❌ Not ideal for conversational AI with tools
 
-For your ZapAI wallet use case, **gpt-4o-mini** is the best choice:
+For your Zap wallet use case, **gpt-4o-mini** is the best choice:
 
 -   ✅ Fast responses
 -   ✅ Excellent tool calling
