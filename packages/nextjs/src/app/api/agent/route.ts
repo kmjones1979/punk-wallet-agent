@@ -6,6 +6,7 @@ import { createPublicClient, http, formatEther, parseEther } from "viem";
 import {
     mainnet,
     base,
+    baseSepolia,
     bsc,
     arbitrum,
     optimism,
@@ -34,6 +35,9 @@ const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
     base: {
         USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         USDbC: "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+    },
+    "base-sepolia": {
+        USDC: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     },
     unichain: {
         USDC: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
@@ -71,6 +75,9 @@ const getChain = (chainName: string) => {
             return bsc;
         case "base":
             return base;
+        case "base sepolia":
+        case "base-sepolia":
+            return baseSepolia;
         case "unichain":
             return unichain;
         case "arbitrum":
@@ -118,7 +125,7 @@ export const maxDuration = 30;
 
 export async function POST(req: Request) {
     try {
-        const { messages, walletAddress } = await req.json();
+        const { messages, walletAddress, connectorId } = await req.json();
 
         // x402 Payment Check: Require payment for each AI message (pay-per-message)
         if (walletAddress) {
@@ -172,6 +179,11 @@ You have access to various tools to help users with their crypto needs.
 You are friendly, knowledgeable, and always prioritize security.
 
 Connected wallet: ${walletAddress || "Not connected"}
+Wallet type: ${
+                connectorId === "burner"
+                    ? "Burner (auto-executes transactions)"
+                    : "Standard (requires approval)"
+            }
 
 IMPORTANT INSTRUCTIONS:
 - When the user asks about "my balance" or "my wallet", use their connected wallet address: ${walletAddress}
@@ -189,10 +201,12 @@ IMPORTANT INSTRUCTIONS:
   * chain: The chain user specified (e.g., "base", "mainnet")
 - CRITICAL: For tokenAmount, pass the EXACT amount the user requested (e.g., "0.01" for 0.01 USDC), NOT a converted value
 - CRITICAL: Always use the resolved ADDRESS (not ENS name) in prepareTransaction's 'to' parameter
-- Supported chains: 'mainnet' (Ethereum), 'base' (Base)
-- When user mentions a chain (e.g., "on base"), extract the chain name and pass it to getTokenInfo and prepareTransaction
+- Supported chains: 'mainnet' (Ethereum), 'base' (Base), 'base sepolia' (Base Sepolia testnet)
+- When user mentions a chain (e.g., "on base sepolia"), extract the EXACT chain name and pass it to getTokenInfo and prepareTransaction
 - If no chain is mentioned, default to 'mainnet'
-- After preparing a transaction, explain what will happen - the user will approve it in a modal
+- After preparing a transaction:
+  * Burner wallet: Transaction is sent automatically - inform user it's being processed
+  * Standard wallet: User will need to approve it in their wallet
 - NEVER execute transactions without explicit user request
 - Be concise and efficient - users appreciate quick results`,
             messages,
@@ -298,8 +312,12 @@ IMPORTANT INSTRUCTIONS:
                             // Look up token address if symbol is provided
                             let address = tokenAddress;
                             if (!address && tokenSymbol) {
+                                // Normalize chain name (replace spaces with dashes)
+                                const normalizedChain = chain
+                                    .toLowerCase()
+                                    .replace(/\s+/g, "-");
                                 const chainAddresses =
-                                    TOKEN_ADDRESSES[chain.toLowerCase()];
+                                    TOKEN_ADDRESSES[normalizedChain];
                                 if (
                                     chainAddresses &&
                                     chainAddresses[tokenSymbol.toUpperCase()]
@@ -574,11 +592,14 @@ IMPORTANT INSTRUCTIONS:
                             }
 
                             // This returns the prepared transaction for the UI to handle
+                            // For burner wallet, transaction is auto-executed
+                            const isBurnerWallet = connectorId === "burner";
                             return {
                                 success: true,
                                 transaction: txData,
-                                message:
-                                    "Transaction prepared. Please approve it in your wallet to continue.",
+                                message: isBurnerWallet
+                                    ? "Transaction sent! It will be processed automatically."
+                                    : "Transaction prepared. Please approve it in your wallet to continue.",
                                 needsApproval: true,
                             };
                         } catch (error: any) {

@@ -48,9 +48,10 @@ const WalletIcon = () => (
 );
 
 export default function AgentPage() {
-    const { address, isConnected, chain } = useAccount();
+    const { address, isConnected, chain, connector } = useAccount();
     const { connectors, connect } = useConnect();
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const processedTransactionsRef = useRef<Set<string>>(new Set());
     const [mounted, setMounted] = useState(false);
     const [pendingTx, setPendingTx] = useState<any>(null);
     const [showTxModal, setShowTxModal] = useState(false);
@@ -87,6 +88,7 @@ export default function AgentPage() {
         api: "/api/agent",
         body: {
             walletAddress: address,
+            connectorId: connector?.id,
         },
         onError: (error) => {
             // Check if it's a 402 Payment Required error
@@ -290,13 +292,35 @@ export default function AgentPage() {
                         tool.state === "result" &&
                         tool.result?.needsApproval
                     ) {
-                        setPendingTx(tool.result.transaction);
-                        setShowTxModal(true);
+                        const transaction = tool.result.transaction;
+
+                        // Create a unique key for this transaction to prevent duplicates
+                        const txKey = `${transaction.to}-${
+                            transaction.data || transaction.value
+                        }-${transaction.chain}`;
+
+                        // Skip if already processed
+                        if (processedTransactionsRef.current.has(txKey)) {
+                            return;
+                        }
+
+                        // Mark as processed
+                        processedTransactionsRef.current.add(txKey);
+
+                        // Auto-execute for burner wallet, show modal for others
+                        if (connector?.id === "burner") {
+                            // Burner wallet - auto-execute transaction
+                            handleBurnerTransaction(transaction);
+                        } else {
+                            // Other wallets - show approval modal
+                            setPendingTx(transaction);
+                            setShowTxModal(true);
+                        }
                     }
                 });
             }
         });
-    }, [messages]);
+    }, [messages, connector]);
 
     // Parse EIP-681 payment request URI
     const parsePaymentRequest = (uri: string) => {
@@ -459,6 +483,59 @@ export default function AgentPage() {
         } catch (error: any) {
             console.error("Payment error:", error);
             alert(`Error: ${error.message}`);
+        }
+    };
+
+    // Auto-execute transaction for burner wallet (no modal)
+    const handleBurnerTransaction = async (transaction: any) => {
+        if (!transaction) return;
+
+        try {
+            // Get the chain ID based on the chain name
+            const getChainId = (chainName: string) => {
+                switch (chainName?.toLowerCase()) {
+                    case "base":
+                        return 8453; // Base mainnet
+                    case "base sepolia":
+                    case "base-sepolia":
+                        return 84532; // Base Sepolia
+                    case "mainnet":
+                    case "ethereum":
+                    default:
+                        return 1; // Ethereum mainnet
+                }
+            };
+
+            const targetChainId = getChainId(transaction.chain);
+
+            // Check if we need to switch chains
+            if (chain?.id !== targetChainId) {
+                await switchChain({ chainId: targetChainId });
+                // Wait a bit for chain to switch
+                await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+
+            sendTransaction(
+                {
+                    to: transaction.to as `0x${string}`,
+                    value: transaction.value
+                        ? parseEther(transaction.value)
+                        : BigInt(0),
+                    data: transaction.data as `0x${string}` | undefined,
+                    chainId: targetChainId,
+                    gas: transaction.data ? BigInt(100000) : BigInt(21000), // Gas limit for contract calls vs simple transfers
+                },
+                {
+                    onSuccess: (hash) => {
+                        console.log("✅ Transaction sent:", hash);
+                    },
+                    onError: (error) => {
+                        console.error("❌ Transaction failed:", error);
+                    },
+                }
+            );
+        } catch (error: any) {
+            console.error("Transaction error:", error);
         }
     };
 
